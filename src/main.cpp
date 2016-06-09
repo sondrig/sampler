@@ -5,62 +5,66 @@
 #include "lib/RtMidi.h"
 using namespace std;
 
-bool done;
-static void finish(int ignore) {
-  done = true;
-}
-
-void listDevices(RtMidiIn *channel) {
-  // Check inputs.
-  cout << "Input channels:" << endl;
-  unsigned int channelCount = channel->getPortCount();
-  for ( unsigned int i = 0; i < channelCount; i++ ) {
-    cout << i+1 << ": " << channel->getPortName(i) << endl;
+void midiMessageCallback(double delta, vector<unsigned char> *message, void *userData) {
+  int nBytes = message->size();
+  for (int i = 0; i < nBytes; i++) {
+    cout << "Byte " << i << " = " << (int)message->at(i) << ", ";
+  }
+  if (nBytes > 0) {
+    cout << "delta = " << delta << endl;
   }
 }
 
-void listDevices(RtMidiOut *channel) {
-  // Check outputs.
-  cout << "Output channel:" << endl;
-  unsigned int channelCount = channel->getPortCount();
-  for ( unsigned int i = 0; i < channelCount; i++ ) {
-    cout << i+1 << ": " << channel->getPortName(i) << endl;
+
+int main() {
+  string cliInput;
+  RtMidiIn  *inChannel = 0;
+  signed int selectedDevice = -1;
+
+  inChannel = new RtMidiIn();
+  unsigned int deviceCount = inChannel->getPortCount();
+  
+  if(!deviceCount) {
+    cout << "No input devices available. Plug one in and try again!" << endl;
+    goto cleanup;
   }
-}
-
-int main()
-{
-  RtMidiIn  *midiin = 0;
-  RtMidiOut *midiout = 0;
-  unsigned int selectedPort = 0;
-  vector<unsigned char> message;
-  int nBytes, i;
-  double stamp;
-
-  midiin = new RtMidiIn();
-  listDevices(midiin);
-
-  midiout = new RtMidiOut();
-  listDevices(midiout);
-
-  midiin->openPort(selectedPort);
-  done = false;
-  (void) signal(SIGINT, finish);
-  cout << "Reading messages from " << midiin->getPortName(selectedPort) << endl;
-
-  while (!done) {
-    stamp = midiin->getMessage( &message );
-    nBytes = message.size();
-
-    for ( i=0; i<nBytes; i++ )
-      std::cout << "Byte " << i << " = " << (int)message[i] << ", ";
-    if ( nBytes > 0 )
-      std::cout << "stamp = " << stamp << std::endl;
-    usleep(100);
+  // Print list of devices
+  cout << "Input devices:" << endl;
+  for ( unsigned int i = 0; i < deviceCount; i++ ) {
+    cout << "#" << i << ": " << inChannel->getPortName(i) << endl;
+  }
+  if(deviceCount == 1) {
+    selectedDevice = 0;
+  }
+  while(selectedDevice < 0) {
+    cout << "Connect device: ";
+    getline(cin, cliInput);
+    selectedDevice = stoi(cliInput);
+    cout << "You picked channel #" << selectedDevice;
+    if((selectedDevice + 1) > deviceCount) {
+      cout << " which is not available. Please try again." << endl;
+      selectedDevice = -1;
+    }
+    else {
+      cout << endl;
+    }
   }
 
-  delete midiin;
-  delete midiout;
+  // open port
+  inChannel->openPort(selectedDevice);
+  // assign callback
+  inChannel->setCallback(&midiMessageCallback);
+  cout << "Connected." << endl;
+
+  // wait for commands
+  cout << "Logging incoming midi messages. Enter 'quit' to exit." << endl;
+  cliInput = "";
+  while(cliInput != "quit") {
+    getline(cin, cliInput);
+  }
+
+cleanup:
+  delete inChannel;
 
   return 0;
 }
